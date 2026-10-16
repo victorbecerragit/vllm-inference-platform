@@ -1,0 +1,105 @@
+services:
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: vllm-engine
+    environment:
+      - HF_HOME=/root/.cache/huggingface
+      - OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
+      - VLLM_CPU_KVCACHE_SPACE=${VLLM_CPU_KVCACHE_SPACE:-4}
+    command: >
+      --model ${MODEL_NAME:-Qwen/Qwen2.5-0.5B-Instruct}
+      --port 8000
+      --device cpu
+      --max-model-len ${MAX_MODEL_LEN:-2048}
+      --dtype float32
+      --enforce-eager
+    expose:
+      - "8000"
+    ports:
+      - "${VLLM_HOST_PORT:-8002}:8000"
+    volumes:
+      - vllm-cache:/root/.cache/huggingface
+      - /dev/shm:/dev/shm
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - inference-net
+
+  kong:
+    image: kong:3.6-ubuntu
+    container_name: kong-gateway
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /usr/local/kong/declarative/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+      KONG_PLUGINS: bundled
+    volumes:
+      - ./config/kong/kong.yml:/usr/local/kong/declarative/kong.yml:ro
+    ports:
+      - "${KONG_PROXY_PORT:-8000}:8000"
+      - "${KONG_ADMIN_PORT:-8001}:8001"
+    depends_on:
+      vllm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kong health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - inference-net
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      - vllm
+      - kong
+    restart: unless-stopped
+    networks:
+      - inference-net
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./config/otel/otel-collector-config.yml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "${OTEL_COLLECTOR_PORT:-4318}:4318"
+    restart: unless-stopped
+    networks:
+      - inference-net
+
+volumes:
+  vllm-cache:
+    name: vllm-model-cache
+  prometheus-data:
+    name: prometheus-storage
+
+networks:
+  inference-net:
+    name: vllm-inference-platform-net
+    driver: bridge

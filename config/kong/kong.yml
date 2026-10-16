@@ -1,0 +1,83 @@
+_format_version: "3.0"
+
+services:
+  - name: vllm-service
+    url: http://vllm:8000
+    connect_timeout: 60000
+    read_timeout: 300000
+    write_timeout: 300000
+    routes:
+      - name: chat-completions
+        paths:
+          - /v1/chat/completions
+        strip_path: false
+        methods:
+          - POST
+          - OPTIONS
+        plugins:
+          - name: key-auth
+            config:
+              key_names:
+                - apikey
+                - Authorization
+              key_in_header: true
+              key_in_query: true
+              hide_credentials: false
+
+      - name: models
+        paths:
+          - /v1/models
+        strip_path: false
+        methods:
+          - GET
+          - OPTIONS
+
+      - name: health-check
+        paths:
+          - /health
+        strip_path: false
+        methods:
+          - GET
+
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - OPTIONS
+          headers:
+            - Accept
+            - Accept-Version
+            - Content-Length
+            - Content-Type
+            - Authorization
+            - apikey
+          exposed_headers:
+            - Content-Type
+            - Authorization
+          credentials: true
+          max_age: 3600
+
+      - name: rate-limiting
+        config:
+          minute: 120
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
+
+consumers:
+  - username: platform-user
+    keyauth_credentials:
+      - key: secret-api-key
+
+plugins:
+  - name: prometheus
+    config:
+      per_consumer: false
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true
+      upstream_health_metrics: true
