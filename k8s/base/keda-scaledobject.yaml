@@ -10,7 +10,7 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: vllm
-  minReplicaCount: 1
+  minReplicaCount: 2
   maxReplicaCount: 5
   pollingInterval: 15
   cooldownPeriod: 60
@@ -32,7 +32,7 @@ spec:
   triggers:
     - type: prometheus
       metadata:
-        serverAddress: http://prometheus-k8s:9090
+        serverAddress: http://prometheus:9090
         metricName: vllm_num_requests_waiting
         query: sum(vllm:num_requests_waiting)
         threshold: "2"

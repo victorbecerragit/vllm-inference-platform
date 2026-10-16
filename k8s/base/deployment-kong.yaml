@@ -1,0 +1,117 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kong
+  labels:
+    app: kong
+    app.kubernetes.io/name: kong
+    app.kubernetes.io/component: api-gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kong
+  template:
+    metadata:
+      labels:
+        app: kong
+        app.kubernetes.io/name: kong
+        app.kubernetes.io/component: api-gateway
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8001"
+        prometheus.io/path: "/metrics"
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: DoesNotExist
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: kong
+                topologyKey: kubernetes.io/hostname
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: kong
+      containers:
+        - name: kong
+          image: kong:3.6-ubuntu
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KONG_DATABASE
+              value: "off"
+            - name: KONG_DECLARATIVE_CONFIG
+              value: /usr/local/kong/declarative/kong.yml
+            - name: KONG_NGINX_WORKER_PROCESSES
+              value: "1"
+            - name: KONG_PROXY_ACCESS_LOG
+              value: /dev/stdout
+            - name: KONG_ADMIN_ACCESS_LOG
+              value: /dev/stdout
+            - name: KONG_PROXY_ERROR_LOG
+              value: /dev/stderr
+            - name: KONG_ADMIN_ERROR_LOG
+              value: /dev/stderr
+            - name: KONG_ADMIN_LISTEN
+              value: 0.0.0.0:8001
+            - name: KONG_PROXY_LISTEN
+              value: 0.0.0.0:8000
+            - name: KONG_PLUGINS
+              value: bundled
+          ports:
+            - name: proxy
+              containerPort: 8000
+              protocol: TCP
+            - name: admin
+              containerPort: 8001
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          volumeMounts:
+            - name: kong-config
+              mountPath: /usr/local/kong/declarative/kong.yml
+              subPath: kong.yml
+          startupProbe:
+            exec:
+              command:
+                - kong
+                - health
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command:
+                - kong
+                - health
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - kong
+                - health
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: kong-config
+          configMap:
+            name: kong-config

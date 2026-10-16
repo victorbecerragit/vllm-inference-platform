@@ -158,6 +158,33 @@ curl -s 'http://localhost:9090/api/v1/query?query=vllm:num_requests_waiting' | j
 curl -s 'http://localhost:9090/api/v1/query?query=kong_http_requests_total' | jq .
 ```
 
+### Kubernetes on kind
+
+Spin up the same lab inside a local kind cluster when you want to validate the Kubernetes manifests and Kong exposure path:
+
+```bash
+# Create the local cluster and deploy vLLM, Kong, and Prometheus
+make kind-up
+
+# Inspect the deployed workloads
+kubectl get pods -n vllm-inference-platform
+
+# Hit Kong through the default kind port mapping
+curl -s http://localhost:18000/v1/models | jq .
+```
+
+The kind bootstrap uses host ports `18000` and `18001` by default so it can coexist with the Docker Compose stack on `8000` and `8001`. If you want to reuse the Compose ports instead, stop the Compose stack first and run:
+
+```bash
+make kind-up KIND_KONG_PROXY_PORT=8000 KIND_KONG_ADMIN_PORT=8001
+```
+
+`make kind-up` deploys the core lab resources on a vanilla cluster without requiring KEDA CRDs up front. If you want autoscaling in kind too, install KEDA separately and then run:
+
+```bash
+make kind-deploy-full
+```
+
 ---
 
 ## Benchmark Metrics Explained
@@ -192,7 +219,7 @@ The `k8s/base/keda-scaledobject.yaml` defines autoscaling rules triggered by que
 triggers:
   - type: prometheus
     metadata:
-      serverAddress: http://prometheus-k8s:9090
+      serverAddress: http://prometheus:9090
       metricName: vllm_num_requests_waiting
       query: sum(vllm:num_requests_waiting)
       threshold: "2"

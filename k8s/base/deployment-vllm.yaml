@@ -7,7 +7,12 @@ metadata:
     app.kubernetes.io/name: vllm
     app.kubernetes.io/component: inference-engine
 spec:
-  replicas: 1
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: vllm
@@ -22,17 +27,34 @@ spec:
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: DoesNotExist
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: vllm
+              topologyKey: kubernetes.io/hostname
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: vllm
       containers:
         - name: vllm
-          image: vllm/vllm-openai:latest
+          image: public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:latest
           imagePullPolicy: IfNotPresent
           args:
-            - "--model"
             - "Qwen/Qwen2.5-0.5B-Instruct"
             - "--port"
             - "8000"
-            - "--device"
-            - "cpu"
             - "--max-model-len"
             - "2048"
             - "--dtype"
@@ -45,6 +67,8 @@ spec:
               value: "4"
             - name: VLLM_CPU_KVCACHE_SPACE
               value: "4"
+            - name: VLLM_TARGET_DEVICE
+              value: cpu
           ports:
             - name: http
               containerPort: 8000
@@ -56,11 +80,18 @@ spec:
             limits:
               cpu: "4000m"
               memory: "8Gi"
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 60
           livenessProbe:
             httpGet:
               path: /health
               port: http
-            initialDelaySeconds: 60
+            initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
@@ -68,7 +99,7 @@ spec:
             httpGet:
               path: /health
               port: http
-            initialDelaySeconds: 30
+            initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
