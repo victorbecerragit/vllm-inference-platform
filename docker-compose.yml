@@ -1,15 +1,15 @@
 services:
   vllm:
-    image: vllm/vllm-openai:latest
+    image: ${VLLM_IMAGE:-public.ecr.aws/q9t5s3a7/vllm-cpu-release-repo:latest}
     container_name: vllm-engine
     environment:
       - HF_HOME=/root/.cache/huggingface
       - OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
       - VLLM_CPU_KVCACHE_SPACE=${VLLM_CPU_KVCACHE_SPACE:-4}
+      - VLLM_TARGET_DEVICE=cpu
     command: >
-      --model ${MODEL_NAME:-Qwen/Qwen2.5-0.5B-Instruct}
+      ${MODEL_NAME:-Qwen/Qwen2.5-0.5B-Instruct}
       --port 8000
-      --device cpu
       --max-model-len ${MAX_MODEL_LEN:-2048}
       --dtype float32
       --enforce-eager
@@ -24,8 +24,8 @@ services:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 30s
+      retries: 30
+      start_period: 5m
     restart: unless-stopped
     networks:
       - inference-net
