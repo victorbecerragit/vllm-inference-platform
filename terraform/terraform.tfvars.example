@@ -1,0 +1,9 @@
+gcp_project_id     = "YOUR_GCP_PROJECT_ID"
+gcp_region         = "us-central1"
+cluster_name       = "vllm-ephemeral-gke"
+node_machine_type  = "e2-standard-4"
+use_spot_instances = true
+
+# Optional tuning
+node_pool_min_count  = 1
+node_pool_max_count  = 4

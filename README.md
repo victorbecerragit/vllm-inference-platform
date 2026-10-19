@@ -19,7 +19,7 @@ flowchart TD
     
     subgraph Kubernetes Autoscaling
         KEDA["KEDA Autoscaler"] -->|"Query: sum(vllm:num_requests_waiting) > 2"| Prometheus
-        KEDA -->|"Scale Replicas (1 to 5)"| HPA["Kubernetes HPA / vLLM Deployment"]
+        KEDA -->|"Scale Replicas (1 to 4)"| HPA["Kubernetes HPA / vLLM Deployment"]
     end
 ```
 
@@ -27,6 +27,7 @@ flowchart TD
 - **Zero-Cloud-Cost CPU Inference**: Runs lightweight quantized/small-parameter models (such as `Qwen/Qwen2.5-0.5B-Instruct` or `meta-llama/Llama-3.2-1B-Instruct`) entirely on CPU with PyTorch optimizations (`--device cpu`, `--enforce-eager`, `--dtype float32`).
 - **AI Gateway Ingress**: Kong Gateway 3.6 runs in DB-less mode, providing rate limiting, API key authentication, CORS handling, and Prometheus telemetry.
 - **Queue-Aware Autoscaling (KEDA)**: Scales Kubernetes pods dynamically by tracking `vllm:num_requests_waiting` rather than traditional CPU/memory metrics, ensuring rapid scale-up when inference queues build up.
+- **Bootstrap-Friendly GKE Capacity**: The managed node pool starts at 1 node and can grow up to 4 nodes, so the stack can bootstrap cheaply and add capacity only when additional vLLM replicas are scheduled.
 - **Async Streaming Benchmarking**: Custom Python client testing streaming token delivery via Server-Sent Events (SSE), measuring Time-To-First-Token (TTFT), Inter-Token Latency (ITL), and token throughput.
 
 ---
@@ -52,7 +53,10 @@ vllm-inference-platform/
 │   ├── base/
 │   │   ├── deployment-vllm.yaml    # vLLM Kubernetes Deployment manifest
 │   │   ├── service-vllm.yaml       # ClusterIP Service for vLLM
-│   │   └── keda-scaledobject.yaml  # KEDA ScaledObject with Prometheus query trigger
+│   └── overlays/
+│       └── autoscaling/
+│           ├── kustomization.yaml # KEDA-enabled overlay
+│           └── scaledobject.yaml  # KEDA ScaledObject with Prometheus query trigger
 │   └── kustomization.yaml          # Root Kustomize manifest
 └── apps/
     └── benchmark/
@@ -185,6 +189,8 @@ make kind-up KIND_KONG_PROXY_PORT=8000 KIND_KONG_ADMIN_PORT=8001
 make kind-deploy-full
 ```
 
+The same split now applies to any cluster: `kubectl apply -k k8s/` deploys the platform, while `kubectl apply -k k8s/overlays/autoscaling` adds the KEDA `ScaledObject` after the operator is available.
+
 ---
 
 ## Benchmark Metrics Explained
@@ -202,7 +208,7 @@ The benchmark client captures three critical low-latency inference metrics:
 ## Kubernetes Production Deployment & KEDA Autoscaling
 
 ### Deploying with Kustomize
-Deploy the vLLM inference engine and KEDA autoscaling to your Kubernetes cluster:
+Deploy the core vLLM inference platform to your Kubernetes cluster:
 
 ```bash
 # Preview manifests
@@ -212,8 +218,79 @@ kustomize build k8s/
 kubectl apply -k k8s/
 ```
 
+This default bundle intentionally excludes the KEDA `ScaledObject`. That resource depends on the KEDA CRDs and operator already being installed in the cluster.
+
+### Installing KEDA and Enabling Autoscaling
+This repository now enforces separation with two Terraform roots:
+
+- `terraform/` -> infra only (GKE, VPC, node pool autoscaling)
+- `terraform/incluster/` -> in-cluster resources only (KEDA + optional ScaledObject)
+
+Recommended sequence:
+
+1. Provision cluster infra:
+
+```bash
+terraform -chdir=terraform init
+terraform -chdir=terraform apply --var-file=terraform.tfvars
+```
+
+2. Install in-cluster dependencies (KEDA), ScaledObject off by default:
+
+```bash
+cp terraform/incluster/terraform.tfvars.example terraform/incluster/terraform.tfvars
+terraform -chdir=terraform/incluster init
+terraform -chdir=terraform/incluster apply --var-file=terraform.tfvars
+```
+
+3. Deploy application manifests:
+
+```bash
+kubectl apply -k k8s/
+```
+
+4. Optional: if Terraform should own autoscaling policy too, set `install_scaledobject = true` in `terraform/incluster/terraform.tfvars` and run Terraform in `terraform/incluster/` again.
+
+After `terraform apply`, only deploy the application manifests:
+
+```bash
+kubectl apply -k k8s/
+```
+
+If your cluster was provisioned outside Terraform (or you disable `install_scaledobject`), install KEDA first and then apply the autoscaling overlay:
+
+```bash
+# Install KEDA
+helm repo add kedacore https://kedacore.github.io/charts
+helm repo update
+helm install keda kedacore/keda --namespace keda --create-namespace
+
+# Apply the vLLM autoscaling resources
+kubectl apply -k k8s/overlays/autoscaling
+```
+
+### IaC vs Application Deployment Separation (Decision Table)
+
+Use this table as the source of truth to avoid dual ownership and drift:
+
+| Mode | Terraform Root | Terraform `install_scaledobject` | App deploy command | Autoscaling overlay command | Recommended for |
+| :--- | :---: | :---: | :--- | :--- | :--- |
+| Terraform-owned autoscaling | `terraform/incluster` | `true` | `kubectl apply -k k8s/` | Do **not** run | Platform teams managing autoscaling policy as IaC |
+| App/GitOps-owned autoscaling | `terraform/incluster` | `false` | `kubectl apply -k k8s/` | `kubectl apply -k k8s/overlays/autoscaling` | Teams that keep scaling policy with app manifests |
+| External cluster + manual KEDA | `false` or external | `false` | `kubectl apply -k k8s/` | `kubectl apply -k k8s/overlays/autoscaling` after KEDA install | Non-Terraform clusters |
+
+Important: never let Terraform and `kubectl apply -k k8s/overlays/autoscaling` manage the same `ScaledObject` at the same time.
+
+The Makefile includes a guardrail on `make autoscaling-deploy` and `make kind-deploy-full`:
+- It blocks overlay apply when `install_scaledobject=true` is detected in `terraform/incluster/terraform.tfvars` (or legacy `terraform/terraform.tfvars`).
+- To override intentionally (for migration/testing only), run:
+
+```bash
+make autoscaling-deploy ALLOW_SCALEDOBJECT_OVERLAY=1
+```
+
 ### How KEDA Autoscaling Works
-The `k8s/base/keda-scaledobject.yaml` defines autoscaling rules triggered by queue congestion:
+The Terraform-managed ScaledObject (or `k8s/overlays/autoscaling/scaledobject.yaml` in non-Terraform flows) defines autoscaling rules triggered by queue congestion:
 
 ```yaml
 triggers:
@@ -227,8 +304,10 @@ triggers:
 
 - **Trigger Metric**: `sum(vllm:num_requests_waiting)`
 - **Scale-Up Threshold**: When more than 2 inference requests are queued waiting for compute, KEDA triggers horizontal pod scaling.
-- **Replica Range**: Scales dynamically between **1** (baseline) and **5** replicas.
+- **Replica Range**: Scales dynamically between **1** (baseline) and **4** replicas.
 - **Fast Scaling**: Instant scale-up (stabilization window: 0s), with gradual scale-down (120s stabilization window) to avoid flapping.
+
+For GKE, the Terraform node pool also autoscales from **1** to **4** nodes. That allows the initial deployment to succeed on a single node, while a second node is added automatically once additional vLLM replicas become unschedulable because of CPU or anti-affinity constraints.
 
 ---
 

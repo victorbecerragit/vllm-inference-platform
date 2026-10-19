@@ -1,31 +1,5 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: vllm-inference-platform
-
 resources:
-  - base/namespace.yaml
-  - base/deployment-vllm.yaml
-  - base/service-vllm.yaml
-  - base/deployment-kong.yaml
-  - base/service-kong.yaml
-  - base/deployment-prometheus.yaml
-  - base/service-prometheus.yaml
-  - base/keda-scaledobject.yaml
-
-configMapGenerator:
-  - name: kong-config
-    files:
-      - kong.yml=base/kong.yml
-    options:
-      disableNameSuffixHash: true
-  - name: prometheus-config
-    files:
-      - prometheus.yml=base/prometheus.yml
-    options:
-      disableNameSuffixHash: true
-
-labels:
-  - pairs:
-      app.kubernetes.io/part-of: vllm-inference-platform
-      app.kubernetes.io/managed-by: kustomize
+  - base

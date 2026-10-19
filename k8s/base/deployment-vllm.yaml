@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/name: vllm
     app.kubernetes.io/component: inference-engine
 spec:
-  replicas: 2
+  replicas: 1
   strategy:
     type: RollingUpdate
     rollingUpdate:

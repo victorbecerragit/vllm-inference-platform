@@ -1,0 +1,54 @@
+
+# Authenticate Application Default Credentials
+
+gcloud auth login
+gcloud auth application-default login
+gcloud config set project YOUR_GCP_PROJECT_ID
+
+# (Optional but Recommended) Pre-enable Required APIs via CLI
+
+gcloud services enable \
+  container.googleapis.com \
+  compute.googleapis.com \
+  cloudresourcemanager.googleapis.com
+
+# Verify Billing Status
+
+gcloud beta billing projects describe YOUR_GCP_PROJECT_ID
+
+# Terraform infra plan (GKE, VPC, node pool)
+
+terraform -chdir=terraform plan --var-file=terraform.tfvars -lock=false
+
+# Terraform infra apply
+
+terraform -chdir=terraform apply --var-file=terraform.tfvars -lock=false
+
+# Terraform in-cluster plan/apply (KEDA + optional ScaledObject)
+
+cp terraform/incluster/terraform.tfvars.example terraform/incluster/terraform.tfvars
+
+terraform -chdir=terraform/incluster plan --var-file=terraform.tfvars -lock=false
+terraform -chdir=terraform/incluster apply --var-file=terraform.tfvars -lock=false
+
+# Notes:
+# - terraform/incluster installs KEDA by default (install_keda=true)
+# - terraform/incluster does NOT create the vLLM ScaledObject by default (install_scaledobject=false)
+# - Enable install_scaledobject=true in terraform/incluster/terraform.tfvars if Terraform should own autoscaling policy
+
+# install gke-gcloud-auth pluging 
+
+https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl#install_plugin
+
+# Get cluster Credentials
+
+gcloud container clusters get-credentials vllm-ephemeral-gke --zone GCP_REGION --project YOUR_GCP_PROJECT_ID
+
+# Verify kubectl acess and deploy K8s
+
+kubectl get nodes
+
+kubectl apply -k ../k8s/
+
+# Optional fallback only (if terraform/incluster install_scaledobject=false):
+# kubectl apply -k ../k8s/overlays/autoscaling

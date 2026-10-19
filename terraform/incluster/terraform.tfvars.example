@@ -1,0 +1,11 @@
+gcp_project_id = "YOUR_GCP_PROJECT_ID"
+gcp_region     = "us-central1"
+cluster_name   = "vllm-ephemeral-gke"
+
+# In-cluster stack controls
+install_keda         = true
+install_scaledobject = false
+
+# Optional tuning
+scaledobject_min_replicas = 1
+scaledobject_max_replicas = 4
