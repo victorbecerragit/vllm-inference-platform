@@ -61,6 +61,23 @@ services:
     networks:
       - inference-net
 
+  gradio-gui:
+    build:
+      context: ./apps/gradio-gui
+      dockerfile: Dockerfile
+    container_name: vllm-gradio-gui
+    ports:
+      - "7860:7860"
+    environment:
+      - VLLM_API_BASE=http://kong:8000/v1
+      - VLLM_API_KEY=${VLLM_API_KEY:-secret-api-key}
+      - GRADIO_VERBOSE=${GRADIO_VERBOSE:-true}
+    depends_on:
+      kong:
+        condition: service_healthy
+    networks:
+      - inference-net
+
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
