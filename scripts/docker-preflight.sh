@@ -50,7 +50,7 @@ run_test() {
   local services
   services="$(docker_compose config --services)"
 
-  for required in vllm kong prometheus otel-collector; do
+  for required in vllm kong prometheus otel-collector redis; do
     if ! grep -q "^${required}$" <<<"$services"; then
       fail "Required service '${required}' not found in compose definition"
     fi

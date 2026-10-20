@@ -29,6 +29,67 @@ client = OpenAI(
 )
 
 
+def _normalize_headers(headers):
+    if not headers:
+        return {}
+    try:
+        items = headers.items()
+    except Exception:
+        return {}
+    return {str(k).lower(): str(v) for k, v in items}
+
+
+def _extract_response_headers(response):
+    # Keep this resilient across SDK versions and response wrappers.
+    for attr in ("response", "_response", "http_response"):
+        wrapped = getattr(response, attr, None)
+        if wrapped is not None:
+            headers = _normalize_headers(getattr(wrapped, "headers", None))
+            if headers:
+                return headers
+
+    headers = _normalize_headers(getattr(response, "headers", None))
+    if headers:
+        return headers
+
+    return {}
+
+
+def _cache_status_from_headers(headers):
+    if not headers:
+        return None
+
+    # LiteLLM commonly sets x-litellm-cache-key when semantic cache is used.
+    if headers.get("x-litellm-cache-key"):
+        return "HIT"
+
+    cache_header = headers.get("x-litellm-cache")
+    if cache_header:
+        cache_value = cache_header.strip().lower()
+        if cache_value in {"hit", "true", "1"}:
+            return "HIT"
+        if cache_value in {"miss", "false", "0"}:
+            return "MISS"
+
+    return None
+
+
+def _cache_badge(status):
+    normalized = (status or "n/a").upper() if status else "n/a"
+    if normalized == "HIT":
+        color = "#2e7d32"
+    elif normalized == "MISS":
+        color = "#8a6d1d"
+    else:
+        color = "#5f6368"
+
+    return (
+        f"<span style=\"font-size:0.72em;padding:0.08em 0.45em;"
+        f"border:1px solid {color};border-radius:999px;color:{color};"
+        f"opacity:0.9;white-space:nowrap;\">cache {normalized}</span>"
+    )
+
+
 def build_messages(history):
     if not history:
         return []
@@ -116,7 +177,7 @@ def predict(message, history, model_name, system_prompt, max_tokens, temperature
     )
 
     try:
-        response = client.chat.completions.create(
+        response = client.chat.completions.with_raw_response.create(
             model=model_name,
             messages=messages,
             max_tokens=max_tokens,
@@ -124,8 +185,12 @@ def predict(message, history, model_name, system_prompt, max_tokens, temperature
             stream=True,
         )
 
+        headers = _extract_response_headers(response)
+        cache_status = _cache_status_from_headers(headers)
+        stream = response.parse()
+
         partial_message = ""
-        for chunk in response:
+        for chunk in stream:
             choices = getattr(chunk, "choices", None) or []
             if not choices:
                 continue
@@ -136,6 +201,12 @@ def predict(message, history, model_name, system_prompt, max_tokens, temperature
             if content:
                 partial_message += str(content)
                 yield partial_message
+
+        badge = _cache_badge(cache_status)
+        if partial_message:
+            yield f"{partial_message}\n\n{badge}"
+        else:
+            yield badge
     except Exception as e:
         logger.exception("Chat completion failed")
         yield f"⚠️ Error communicating with vLLM Backend: {str(e)}"

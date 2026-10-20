@@ -2,7 +2,7 @@ _format_version: "3.0"
 
 services:
   - name: vllm-service
-    url: http://vllm:8000
+    url: http://litellm:4000
     connect_timeout: 60000
     read_timeout: 300000
     write_timeout: 300000

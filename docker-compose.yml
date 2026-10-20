@@ -30,8 +30,62 @@ services:
     networks:
       - inference-net
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis-cache
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - inference-net
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: litellm-proxy
+    command:
+      - --config
+      - /app/config.yaml
+      - --port
+      - "4000"
+      - --num_workers
+      - "1"
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-secret-api-key}
+      - LITELLM_LOG=INFO
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_URL=redis://redis:6379/0
+    expose:
+      - "4000"
+    ports:
+      - "${LITELLM_PORT:-4000}:4000"
+    volumes:
+      - ./config/litellm/config.yaml:/app/config.yaml:ro
+    depends_on:
+      vllm:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import os, urllib.request; key=os.getenv('LITELLM_MASTER_KEY','secret-api-key'); req=urllib.request.Request('http://localhost:4000/health', headers={'Authorization': f'Bearer {key}'}); urllib.request.urlopen(req, timeout=3)\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - inference-net
+
   kong:
-    image: kong:3.6-ubuntu
+    image: ${KONG_IMAGE:-kong/kong-gateway:3.13}
     container_name: kong-gateway
     environment:
       KONG_DATABASE: "off"
@@ -49,7 +103,7 @@ services:
       - "${KONG_PROXY_PORT:-8000}:8000"
       - "${KONG_ADMIN_PORT:-8001}:8001"
     depends_on:
-      vllm:
+      litellm:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "kong health || exit 1"]
@@ -115,6 +169,8 @@ volumes:
     name: vllm-model-cache
   prometheus-data:
     name: prometheus-storage
+  redis-data:
+    name: redis-cache-storage
 
 networks:
   inference-net:

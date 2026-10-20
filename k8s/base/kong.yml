@@ -24,6 +24,23 @@ services:
               key_in_query: true
               hide_credentials: false
 
+          - name: ai-semantic-cache
+            config:
+              embeddings:
+                model:
+                  provider: openai
+                  name: text-embedding-3-small
+                  options:
+                    upstream_url: http://vllm:8000/v1/embeddings
+              vectordb:
+                strategy: redis
+                dimensions: 1536
+                distance_metric: cosine
+                threshold: 0.2
+                redis:
+                  host: redis
+                  port: 6379
+
       - name: models
         paths:
           - /v1/models

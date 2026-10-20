@@ -49,11 +49,15 @@ class FakeModels:
 class FakeOpenAI:
     def __init__(self, *args, **kwargs):
         self.models = FakeModels()
+        raw_response = types.SimpleNamespace(
+            create=lambda **kwargs: types.SimpleNamespace(
+                headers={},
+                parse=lambda: iter([]),
+            )
+        )
         self.chat = types.SimpleNamespace(
             completions=types.SimpleNamespace(
-                create=lambda **kwargs: types.SimpleNamespace(
-                    __iter__=lambda self: iter([])
-                )
+                with_raw_response=raw_response
             )
         )
 
@@ -120,13 +124,48 @@ def test_predict_ignores_stream_chunks_without_delta_content():
             self.choices = [types.SimpleNamespace(delta=types.SimpleNamespace(content=content))]
 
     class FakeStreamResponse:
-        def __iter__(self):
+        headers = {}
+
+        def parse(self):
             yield FakeChunk("Hello")
             yield FakeChunk(None)
             yield FakeChunk(" world")
 
-    module.client.chat.completions.create = lambda **kwargs: FakeStreamResponse()
+    module.client.chat.completions.with_raw_response.create = lambda **kwargs: FakeStreamResponse()
 
     chunks = list(module.predict("hi", None, "demo-model", "", 64, 0.7))
 
-    assert chunks == ["Hello", "Hello world"]
+    assert chunks[0:2] == ["Hello", "Hello world"]
+    assert chunks[-1].startswith("Hello world\n\n<span")
+    assert "cache n/a" in chunks[-1]
+
+
+def test_cache_status_from_headers_hit_with_cache_key():
+    module = load_module()
+
+    status = module._cache_status_from_headers({"x-litellm-cache-key": "abc123"})
+
+    assert status == "HIT"
+
+
+def test_predict_appends_cache_status_when_header_present():
+    module = load_module()
+
+    class FakeChunk:
+        def __init__(self, content):
+            self.choices = [types.SimpleNamespace(delta=types.SimpleNamespace(content=content))]
+
+    class FakeStreamResponse:
+        headers = {"x-litellm-cache-key": "cache:key"}
+
+        def parse(self):
+            yield FakeChunk("Hello")
+            yield FakeChunk(" world")
+
+    module.client.chat.completions.with_raw_response.create = lambda **kwargs: FakeStreamResponse()
+
+    chunks = list(module.predict("hi", None, "demo-model", "", 64, 0.7))
+
+    assert chunks[0:2] == ["Hello", "Hello world"]
+    assert chunks[-1].startswith("Hello world\n\n<span")
+    assert "cache HIT" in chunks[-1]

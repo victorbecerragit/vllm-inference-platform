@@ -1,0 +1,15 @@
+model_list:
+  - model_name: Qwen/Qwen2.5-0.5B-Instruct
+    litellm_params:
+      model: openai/Qwen/Qwen2.5-0.5B-Instruct
+      api_base: http://vllm:8000/v1
+      api_key: sk-local
+
+litellm_settings:
+  cache: true
+  cache_params:
+    type: redis
+    host: redis
+    port: 6379
+    namespace: vllm-platform
+    ttl: 3600
