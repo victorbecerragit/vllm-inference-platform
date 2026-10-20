@@ -172,7 +172,12 @@ with gr.Blocks(title="vLLM Platform Demo") as demo:
                 lines=2,
             )
             max_tokens_slider = gr.Slider(
-                minimum=128, maximum=4096, value=1024, step=128, label="Max Tokens"
+                minimum=128,
+                maximum=1024,
+                value=512,
+                step=128,
+                label="Max Tokens",
+                info="Backend context limit is 1024 tokens. Requests exceeding this will fail on Kubernetes deployments.",
             )
             temperature_slider = gr.Slider(
                 minimum=0.0, maximum=1.0, value=0.7, step=0.05, label="Temperature"

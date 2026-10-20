@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gradio
+  labels:
+    app: gradio
+    app.kubernetes.io/name: gradio
+    app.kubernetes.io/component: ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gradio
+  template:
+    metadata:
+      labels:
+        app: gradio
+        app.kubernetes.io/name: gradio
+        app.kubernetes.io/component: ui
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: gradio
+          image: vllm-gradio-gui:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: VLLM_API_BASE
+              value: http://kong:8000/v1
+            - name: VLLM_API_KEY
+              value: secret-api-key
+            - name: GRADIO_VERBOSE
+              value: "false"
+          ports:
+            - name: http
+              containerPort: 7860
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3

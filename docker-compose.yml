@@ -10,7 +10,7 @@ services:
     command: >
       ${MODEL_NAME:-Qwen/Qwen2.5-0.5B-Instruct}
       --port 8000
-      --max-model-len ${MAX_MODEL_LEN:-2048}
+      --max-model-len ${MAX_MODEL_LEN:-1024}
       --dtype float32
       --enforce-eager
     expose:

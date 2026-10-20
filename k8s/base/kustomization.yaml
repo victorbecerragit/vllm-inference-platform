@@ -9,6 +9,8 @@ resources:
   - service-vllm.yaml
   - deployment-kong.yaml
   - service-kong.yaml
+  - deployment-gradio.yaml
+  - service-gradio.yaml
   - deployment-prometheus.yaml
   - service-prometheus.yaml
 
