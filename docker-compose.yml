@@ -75,11 +75,30 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import os, urllib.request; key=os.getenv('LITELLM_MASTER_KEY','secret-api-key'); req=urllib.request.Request('http://localhost:4000/health', headers={'Authorization': f'Bearer {key}'}); urllib.request.urlopen(req, timeout=3)\" || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import os, urllib.request; key=os.getenv('LITELLM_MASTER_KEY','secret-api-key'); req=urllib.request.Request('http://localhost:4000/health/liveliness', headers={'Authorization': f'Bearer {key}'}); urllib.request.urlopen(req, timeout=3)\" || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 20s
+    restart: unless-stopped
+    networks:
+      - inference-net
+
+  fallback-mock:
+    build:
+      context: ./apps/fallback-mock
+      dockerfile: Dockerfile
+    container_name: fallback-mock
+    expose:
+      - "8080"
+    ports:
+      - "${FALLBACK_MOCK_PORT:-8088}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=3)\" || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     restart: unless-stopped
     networks:
       - inference-net
@@ -104,6 +123,8 @@ services:
       - "${KONG_ADMIN_PORT:-8001}:8001"
     depends_on:
       litellm:
+        condition: service_healthy
+      fallback-mock:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "kong health || exit 1"]

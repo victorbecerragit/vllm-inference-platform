@@ -1,8 +1,54 @@
 _format_version: "3.0"
 
+upstreams:
+  - name: llm-upstream
+    algorithm: round-robin
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        timeout: 2
+        concurrency: 10
+        healthy:
+          interval: 5
+          successes: 1
+        unhealthy:
+          interval: 5
+          http_failures: 2
+          tcp_failures: 2
+          timeouts: 2
+      passive:
+        type: http
+        healthy:
+          successes: 1
+          http_statuses:
+            - 200
+            - 201
+            - 202
+            - 204
+        unhealthy:
+          http_failures: 2
+          tcp_failures: 2
+          timeouts: 2
+          http_statuses:
+            - 429
+            - 500
+            - 502
+            - 503
+            - 504
+    targets:
+      - target: litellm:4000
+        weight: 100
+      - target: fallback-mock:8080
+        weight: 10
+
 services:
   - name: vllm-service
-    url: http://litellm:4000
+    protocol: http
+    host: llm-upstream
+    port: 80
+    path: /
+    retries: 2
     connect_timeout: 60000
     read_timeout: 300000
     write_timeout: 300000
