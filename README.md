@@ -34,6 +34,31 @@ curl -s -H "apikey: secret-api-key" http://localhost:8000/v1/models | jq .
 - Installation and local usage: [docs/installation.md](docs/installation.md)
 - Kubernetes and autoscaling notes: [docs/kubernetes.md](docs/kubernetes.md)
 
+## Kubernetes Failover And Failback (Kong Managed)
+
+Kubernetes routing now includes a Kong upstream with active and passive health checks targeting:
+
+- Primary: `vllm:8000`
+- Standby fallback: `fallback-mock:8080`
+
+Behavior:
+
+- During primary outage, Kong routes `/v1/chat/completions` to `fallback-mock`.
+- After primary recovery, Kong fails back to `vllm` automatically.
+- Fallback remains in standby mode when primary is healthy.
+
+Validate end-to-end behavior in cluster:
+
+```bash
+./scripts/test-fallback-k8s.sh
+```
+
+Expected result:
+
+- Fallback phase returns fallback payload.
+- Post-restore phase returns primary vLLM payload.
+- Script exits with `PASS`.
+
 ## Core Components
 
 | Component | Default Port | Purpose |

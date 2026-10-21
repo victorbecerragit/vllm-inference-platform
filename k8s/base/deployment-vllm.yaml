@@ -85,9 +85,11 @@ spec:
             httpGet:
               path: /health
               port: http
-            periodSeconds: 5
+            # CPU model boot and first-time Hugging Face downloads can exceed 10 minutes.
+            # Keep the container alive long enough to finish initialization.
+            periodSeconds: 10
             timeoutSeconds: 10
-            failureThreshold: 120
+            failureThreshold: 180
           livenessProbe:
             httpGet:
               path: /health

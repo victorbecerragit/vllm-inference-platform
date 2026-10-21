@@ -7,6 +7,8 @@ resources:
   - namespace.yaml
   - deployment-vllm.yaml
   - service-vllm.yaml
+  - deployment-fallback-mock.yaml
+  - service-fallback-mock.yaml
   - deployment-redis.yaml
   - service-redis.yaml
   - deployment-kong.yaml
