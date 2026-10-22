@@ -2,7 +2,7 @@
 
 Local-first LLM inference platform using vLLM (CPU mode), Kong AI Gateway, Prometheus/OpenTelemetry observability, and KEDA-ready autoscaling on Kubernetes.
 
-## Demo: Gradio Using vLLM Through Kong
+## Demo: Gradio Using vLLM Through Kong + LiteLLM Proxy
 
 The Gradio app sends OpenAI-compatible requests to Kong, and Kong routes them to vLLM.
 
