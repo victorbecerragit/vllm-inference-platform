@@ -17,6 +17,12 @@ resources:
   - service-gradio.yaml
   - deployment-prometheus.yaml
   - service-prometheus.yaml
+  - deployment-jaeger.yaml
+  - service-jaeger.yaml
+  - deployment-otel.yaml
+  - service-otel.yaml
+  - deployment-grafana.yaml
+  - service-grafana.yaml
 
 configMapGenerator:
   - name: kong-config
@@ -27,6 +33,26 @@ configMapGenerator:
   - name: prometheus-config
     files:
       - prometheus.yml=prometheus.yml
+    options:
+      disableNameSuffixHash: true
+  - name: otel-collector-config
+    files:
+      - config.yaml=otel-collector-config.yaml
+    options:
+      disableNameSuffixHash: true
+  - name: grafana-datasources
+    files:
+      - datasources.yaml=grafana-datasources.yaml
+    options:
+      disableNameSuffixHash: true
+  - name: grafana-dashboards-provider
+    files:
+      - dashboards.yaml=grafana-dashboards.yaml
+    options:
+      disableNameSuffixHash: true
+  - name: grafana-dashboard-observability
+    files:
+      - inference-observability.json=grafana-dashboard-inference-observability.json
     options:
       disableNameSuffixHash: true
 

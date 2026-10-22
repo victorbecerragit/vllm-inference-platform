@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: vllm-inference-platform
+    orgId: 1
+    folder: vLLM Platform
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards
