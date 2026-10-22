@@ -209,7 +209,15 @@ def predict(message, history, model_name, system_prompt, max_tokens, temperature
             yield badge
     except Exception as e:
         logger.exception("Chat completion failed")
-        yield f"⚠️ Error communicating with vLLM Backend: {str(e)}"
+        err = str(e)
+        if "ContextWindowExceededError" in err or "maximum context length" in err:
+            yield (
+                "⚠️ Request exceeds model context window. "
+                "Reduce System Prompt length, conversation history, or Max Tokens and retry.\n\n"
+                f"Details: {err}"
+            )
+            return
+        yield f"⚠️ Error communicating with vLLM Backend: {err}"
 
 available_models = get_available_models()
 backend_ready, backend_status = check_backend_ready(available_models[0] if available_models else None)
@@ -248,7 +256,7 @@ with gr.Blocks(title="vLLM Platform Demo") as demo:
                 value=512,
                 step=128,
                 label="Max Tokens",
-                info="Backend context limit is 1024 tokens. Requests exceeding this will fail on Kubernetes deployments.",
+                info="Keep this conservative. Large prompts + high max tokens can exceed the model context window and return HTTP 400.",
             )
             temperature_slider = gr.Slider(
                 minimum=0.0, maximum=1.0, value=0.7, step=0.05, label="Temperature"

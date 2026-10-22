@@ -69,7 +69,29 @@ Expected result:
 | LiteLLM Proxy | 4000 | Redis-backed cache proxy (direct cache verification) |
 | Redis | 6379 | Semantic & response caching backend |
 | Prometheus | 9090 | Metrics storage and querying |
+| Jaeger | 16686 | Distributed trace visualization |
+| Grafana | 3000 | Dashboards for vLLM and benchmark telemetry |
 | Gradio UI | 7860 | Interactive chat interface |
+
+## Observability Stack
+
+The benchmark client emits both traces and OTEL metrics.
+
+- Traces: OTLP -> OTel Collector -> Jaeger
+- Metrics: OTLP -> OTel Collector Prometheus exporter (:8889) -> Prometheus -> Grafana
+
+After `make up`, open:
+
+- Grafana: http://localhost:3000 (admin / admin)
+- Jaeger: http://localhost:16686
+
+The provisioned Grafana dashboard includes:
+
+- TTFT p50/p95 from OTEL histograms
+- ITL p50/p95 from OTEL histograms
+- Completion token throughput
+- Cache hit ratio
+- vLLM queue depth and process RSS memory
 
 ## Semantic Caching & Latency Optimization
 

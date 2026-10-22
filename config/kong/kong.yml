@@ -6,7 +6,8 @@ upstreams:
     healthchecks:
       active:
         type: http
-        http_path: /health
+        # LiteLLM protects /health with API key auth; use liveness endpoint for upstream probes.
+        http_path: /health/liveliness
         timeout: 2
         concurrency: 10
         healthy:
