@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dcgm-exporter
+  labels:
+    app: dcgm-exporter
+spec:
+  selector:
+    matchLabels:
+      app: dcgm-exporter
+  template:
+    metadata:
+      labels:
+        app: dcgm-exporter
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9400"
+        prometheus.io/path: "/metrics"
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: dcgm-exporter
+          image: nvcr.io/nvidia/k8s/dcgm-exporter:3.3.8-3.6.0-ubuntu22.04
+          imagePullPolicy: IfNotPresent
+          args:
+            - "-f"
+            - "/etc/dcgm-exporter/dcp-metrics-included.csv"
+          ports:
+            - name: metrics
+              containerPort: 9400
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+          volumeMounts:
+            - name: pod-gpu-resources
+              mountPath: /var/lib/kubelet/pod-resources
+              readOnly: true
+            - name: dcgm-metrics
+              mountPath: /etc/dcgm-exporter/dcp-metrics-included.csv
+              subPath: dcp-metrics-included.csv
+      volumes:
+        - name: pod-gpu-resources
+          hostPath:
+            path: /var/lib/kubelet/pod-resources
+            type: Directory
+        - name: dcgm-metrics
+          configMap:
+            name: dcgm-exporter-metrics
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dcgm-exporter
+  labels:
+    app: dcgm-exporter
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9400"
+    prometheus.io/path: "/metrics"
+spec:
+  selector:
+    app: dcgm-exporter
+  ports:
+    - name: metrics
+      port: 9400
+      targetPort: metrics
+      protocol: TCP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dcgm-exporter-metrics
+data:
+  dcp-metrics-included.csv: |
+    # Utilization
+    DCGM_FI_DEV_GPU_UTIL, gauge, SM Utilization (%).
+    # Memory
+    DCGM_FI_DEV_FB_USED, gauge, Framebuffer memory used (MiB).
+    DCGM_FI_DEV_FB_FREE, gauge, Framebuffer memory free (MiB).
+    # Thermal
+    DCGM_FI_DEV_GPU_TEMP, gauge, GPU temperature (C).
+    # NVLink
+    DCGM_FI_DEV_NVLINK_BANDWIDTH_TOTAL, gauge, Total NVLink bandwidth (bytes/s).
