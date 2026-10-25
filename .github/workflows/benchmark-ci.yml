@@ -1,0 +1,149 @@
+name: Performance Regression Benchmark
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  benchmark:
+    name: Benchmark Performance Regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: apps/benchmark/requirements.txt
+
+      - name: Install benchmark dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r apps/benchmark/requirements.txt
+
+      - name: Prepare environment configuration
+        run: |
+          if [ ! -f .env ]; then
+            cp .env.example .env
+          fi
+
+      - name: Build and spin up local stack
+        run: |
+          docker compose build
+          docker compose up -d
+
+      - name: Poll /v1/models endpoint until healthy
+        run: |
+          echo "Waiting for http://localhost:8000/v1/models to become healthy..."
+          MAX_RETRIES=60
+          RETRY_COUNT=0
+          until curl -s -f -o /dev/null -w "%{http_code}" http://localhost:8000/v1/models | grep -q "^200$"; do
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            if [ "$RETRY_COUNT" -ge "$MAX_RETRIES" ]; then
+              echo "Error: Timed out waiting for /v1/models after $MAX_RETRIES attempts ($(( MAX_RETRIES * 5 ))s)."
+              echo ""
+              echo "=== Docker Compose Container Status ==="
+              docker compose ps
+              echo ""
+              echo "=== vLLM Logs ==="
+              docker compose logs --tail=80 vllm
+              echo ""
+              echo "=== LiteLLM Logs ==="
+              docker compose logs --tail=40 litellm
+              echo ""
+              echo "=== Kong Logs ==="
+              docker compose logs --tail=40 kong
+              exit 1
+            fi
+            echo "  Attempt $RETRY_COUNT/$MAX_RETRIES — retrying in 5s..."
+            sleep 5
+          done
+          echo ""
+          echo "Gateway healthy — models endpoint responding:"
+          curl -s http://localhost:8000/v1/models | python -m json.tool 2>/dev/null || curl -s http://localhost:8000/v1/models
+
+      - name: Run performance benchmark
+        id: benchmark
+        run: |
+          python apps/benchmark/main.py \
+            --requests 20 \
+            --concurrency 4 \
+          2>&1 | tee benchmark_output.txt
+
+      - name: Check regression thresholds
+        run: |
+          python - << 'PYEOF'
+          import re
+          import sys
+
+          with open("benchmark_output.txt") as f:
+              output = f.read()
+
+          # ----------------------------------------------------------------
+          # Parse metrics from the AGGREGATE BENCHMARK SUMMARY table.
+          # Handles both tabulate (pipe-delimited) and plain-text formats:
+          #   tabulate : "| Average TTFT            | 450.32 ms   |"
+          #   plaintext: "Average TTFT                   450.32 ms"
+          # ----------------------------------------------------------------
+          avg_ttft_match  = re.search(r"Average TTFT\s*\|?\s*([\d.]+)\s*ms", output)
+          failed_match    = re.search(r"Failed Requests\s*\|?\s*(\d+)",      output)
+          total_match     = re.search(r"Total Requests\s*\|?\s*(\d+)",       output)
+
+          print("=" * 60)
+          print("       PERFORMANCE REGRESSION THRESHOLD CHECK")
+          print("=" * 60)
+
+          failures = []
+
+          # --- TTFT gate (must be <= 2000 ms) ---
+          if not avg_ttft_match:
+              failures.append("Could not parse Average TTFT from benchmark output.")
+          else:
+              avg_ttft = float(avg_ttft_match.group(1))
+              status = "PASS" if avg_ttft <= 2000.0 else "FAIL"
+              print(f"  Average TTFT : {avg_ttft:.2f} ms  (threshold: <= 2000 ms)  [{status}]")
+              if avg_ttft > 2000.0:
+                  failures.append(f"Average TTFT regression: {avg_ttft:.2f} ms > 2000 ms")
+
+          # --- Error-rate gate (must be 0%) ---
+          if not failed_match or not total_match:
+              failures.append("Could not parse request counts from benchmark output.")
+          else:
+              failed = int(failed_match.group(1))
+              total  = int(total_match.group(1))
+              rate   = (failed / total * 100.0) if total > 0 else 100.0
+              status = "PASS" if failed == 0 else "FAIL"
+              print(f"  Error Rate   : {rate:.2f}% ({failed}/{total} failed)  (threshold: 0%)  [{status}]")
+              if failed > 0:
+                  failures.append(f"Error rate: {rate:.2f}% — {failed}/{total} requests failed")
+
+          print("=" * 60)
+
+          if failures:
+              print("\n[FAIL] Performance regression detected:")
+              for f in failures:
+                  print(f"  ✗ {f}")
+              sys.exit(1)
+
+          print("\n[PASS] All regression checks passed.")
+          PYEOF
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: |
+          echo "=== Docker Compose Logs (last 200 lines per service) ==="
+          docker compose logs --tail=200
+
+      - name: Teardown local stack
+        if: always()
+        run: |
+          docker compose down -v
