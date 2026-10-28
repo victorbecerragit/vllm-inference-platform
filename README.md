@@ -10,16 +10,27 @@ The Gradio app sends OpenAI-compatible requests to Kong, and Kong routes them to
 
 ## Architecture Overview
 
-```mermaid
-flowchart TD
-    Client["Gradio / Benchmark Client"] -->|"HTTP / SSE via :8000"| Kong["Kong AI Gateway"]
-    Kong -->|"Proxy"| LiteLLM["LiteLLM Proxy"]
-    LiteLLM -->|"Semantic Cache Lookup"| Redis[("Redis 7 Cache")]
-    LiteLLM -->|"Proxy to backend (Cache Miss)"| vLLM["vLLM Engine"]
-    Prometheus -->|"Scrapes metrics"| Kong
-    Prometheus -->|"Scrapes metrics"| vLLM
-    KEDA -->|"sum(vllm:num_requests_waiting)"| Prometheus
-```
+![vLLM Inference Platform architecture diagram](docs/assets/architecture-diagram.png)
+
+Requests enter through Kong (edge ingress, key-auth, rate limiting), which proxies to the inference path
+(`Kong -> LiteLLM cache proxy -> vLLM`). LiteLLM consults Redis for semantic cache lookups and only
+forwards cache misses to vLLM. Kong's upstream also holds a standby `fallback-mock` target that takes
+over on 5xx responses or timeouts. Telemetry flows to the OTel Collector, which fans out to Jaeger
+(traces) and Prometheus (metrics); Prometheus additionally scrapes Kong (`:8001/metrics`) and vLLM
+(`:8000/metrics`). KEDA reads `vllm:num_requests_waiting` from Prometheus to drive replica counts,
+with HPA as the secondary scaling guardrail.
+
+The editable source for the diagram is `docs/assets/architecture-diagram.svg`; regenerate the PNG from
+it after layout changes.
+
+| Plane | Components |
+| :--- | :--- |
+| Edge | Kong Gateway (`:8000` proxy, `:8001` admin) |
+| Inference | vLLM engine, LiteLLM cache proxy, Redis semantic cache |
+| Experience | Gradio chat UI (`:7860`), async benchmark client |
+| Observability | OTel Collector, Jaeger, Prometheus, Grafana |
+| Autoscaling | KEDA (primary, queue depth) + HPA (guardrail) |
+| Infrastructure | GKE node pool / local kind cluster, VPC, Terraform provisioned |
 
 ## Quick Start
 
