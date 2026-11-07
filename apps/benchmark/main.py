@@ -174,6 +174,22 @@ def calculate_percentile(data: List[float], percentile: float) -> float:
     return round(d0 + d1, 2)
 
 
+def resolve_runtime_profile(url: str, concurrency: int, max_tokens: int) -> Dict[str, int]:
+    """Keep local CPU benchmarks within the throughput envelope of the default stack."""
+    safe_local_concurrency = 2
+    safe_local_max_tokens = 32
+
+    if "localhost" not in url and "127.0.0.1" not in url:
+        return {"concurrency": concurrency, "max_tokens": max_tokens}
+
+    effective_concurrency = min(concurrency, safe_local_concurrency)
+    effective_max_tokens = min(max_tokens, safe_local_max_tokens)
+    return {
+        "concurrency": effective_concurrency,
+        "max_tokens": effective_max_tokens,
+    }
+
+
 # ------------------------------------------------------------------------------
 # Streaming Benchmark Worker
 # ------------------------------------------------------------------------------
@@ -713,13 +729,13 @@ def parse_arguments() -> argparse.Namespace:
         "--concurrency",
         type=int,
         default=2,
-        help="Maximum concurrent in-flight requests (default: 2)",
+        help="Maximum concurrent in-flight requests (default: 2; local CPU mode is capped at 2)",
     )
     parser.add_argument(
         "--max-tokens",
         type=int,
-        default=128,
-        help="Maximum tokens generated per request (default: 128)",
+        default=32,
+        help="Maximum tokens generated per request (default: 32; local CPU mode is capped at 32)",
     )
     parser.add_argument(
         "--prompt",
@@ -759,6 +775,16 @@ def parse_arguments() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_arguments()
+    requested_concurrency = args.concurrency
+    requested_max_tokens = args.max_tokens
+    runtime_profile = resolve_runtime_profile(args.url, args.concurrency, args.max_tokens)
+    args.concurrency = runtime_profile["concurrency"]
+    args.max_tokens = runtime_profile["max_tokens"]
+
+    if requested_concurrency != args.concurrency or requested_max_tokens != args.max_tokens:
+        print(
+            f"[!] Local CPU benchmark profile enforced: concurrency={args.concurrency}, max_tokens={args.max_tokens}"
+        )
 
     exit_code = 0
     try:

@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-qwen25
+  labels:
+    app: vllm-qwen25
+    app.kubernetes.io/name: vllm-qwen25
+    app.kubernetes.io/component: inference-engine
+    app.kubernetes.io/part-of: vllm-inference-platform
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: vllm-qwen25
+  template:
+    metadata:
+      labels:
+        app: vllm-qwen25
+        app.kubernetes.io/name: vllm-qwen25
+        app.kubernetes.io/component: inference-engine
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      # HAMI's scheduler extension is required to bind vGPU slice requests.
+      schedulerName: hami-scheduler
+      enableServiceLinks: false
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: DoesNotExist
+      containers:
+        - name: vllm-engine
+          image: vllm/vllm-openai:v0.6.3
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--model"
+            - "Qwen/Qwen2.5-1.5B-Instruct"
+            - "--served-model-name"
+            - "Qwen/Qwen2.5-1.5B-Instruct"
+            - "qwen2.5"
+            - "--gpu-memory-utilization"
+            - "0.85"
+            - "--max-model-len"
+            - "4096"
+            - "--port"
+            - "8000"
+          env:
+            - name: HF_HOME
+              value: "/root/.cache/huggingface"
+            - name: VLLM_TARGET_DEVICE
+              value: "cuda"
+            # Do NOT set NVIDIA_VISIBLE_DEVICES / CUDA_VISIBLE_DEVICES here:
+            # the HAMI device plugin injects the correct vGPU device mapping.
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          resources:
+            limits:
+              # Hard VRAM limit: 6 GiB (HAMI memory resource is in MiB).
+              hami.io/gpu-mem: "6144"
+              # Hard compute limit: 40% of SM.
+              hami.io/gpu-core: "40"
+            requests:
+              hami.io/gpu-mem: "6144"
+              hami.io/gpu-core: "40"
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 180
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+            - name: model-cache
+              mountPath: /root/.cache/huggingface
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Gi
+        - name: model-cache
+          emptyDir: {}

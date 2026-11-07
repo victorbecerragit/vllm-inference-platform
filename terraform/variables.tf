@@ -44,3 +44,39 @@ variable "use_spot_instances" {
   type        = bool
   default     = true
 }
+
+variable "hami_gpu_machine_type" {
+  description = "Machine type for the dedicated HAMI GPU node pool"
+  type        = string
+  default     = "n1-standard-4"
+}
+
+variable "hami_gpu_accelerator_type" {
+  description = "GPU accelerator type to attach to the HAMI node pool"
+  type        = string
+  default     = "nvidia-tesla-t4"
+}
+
+variable "hami_gpu_accelerator_count" {
+  description = "Number of GPUs to attach to each HAMI worker"
+  type        = number
+  default     = 1
+}
+
+variable "hami_gpu_pool_initial_count" {
+  description = "Initial GPU node count for the HAMI node pool"
+  type        = number
+  default     = 1
+}
+
+variable "hami_gpu_pool_min_count" {
+  description = "Minimum GPU node count for the HAMI node pool"
+  type        = number
+  default     = 1
+}
+
+variable "hami_gpu_pool_max_count" {
+  description = "Maximum GPU node count for the HAMI node pool"
+  type        = number
+  default     = 1
+}

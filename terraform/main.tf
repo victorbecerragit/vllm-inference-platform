@@ -82,3 +82,41 @@ resource "google_container_node_pool" "primary_nodes" {
     auto_upgrade = true
   }
 }
+
+# Dedicated GPU node pool for HAMI vGPU scheduling.
+resource "google_container_node_pool" "hami_gpu_nodes" {
+  name               = "${var.cluster_name}-hami-gpu-pool"
+  location           = "${var.gcp_region}-a"
+  cluster            = google_container_cluster.primary.name
+  initial_node_count = var.hami_gpu_pool_initial_count
+
+  autoscaling {
+    min_node_count = var.hami_gpu_pool_min_count
+    max_node_count = var.hami_gpu_pool_max_count
+  }
+
+  node_config {
+    machine_type = var.hami_gpu_machine_type
+    spot         = var.use_spot_instances
+
+    oauth_scopes = [
+      "https://www.googleapis.com/auth/cloud-platform"
+    ]
+
+    labels = {
+      environment = "ephemeral-bench"
+      workload    = "hami-gpu"
+      gpu         = "on"
+    }
+
+    guest_accelerator {
+      type  = var.hami_gpu_accelerator_type
+      count = var.hami_gpu_accelerator_count
+    }
+  }
+
+  management {
+    auto_repair  = true
+    auto_upgrade = true
+  }
+}

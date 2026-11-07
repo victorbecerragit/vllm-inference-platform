@@ -107,7 +107,27 @@ kubectl logs -n vllm-inference-platform deployment/vllm --tail=200
 kubectl logs -n vllm-inference-platform deployment/kong --tail=200
 ```
 
-## 5) Terraform split (infra vs in-cluster)
+## 5) HAMI vGPU slicing overlay
+
+To run multiple models on a single physical GPU, install HAMI and apply the
+`hami-gpu` overlay instead of the base stack:
+
+```bash
+make hami-install
+make hami-deploy
+make hami-verify
+```
+
+This replaces the base `vllm` deployment with `vllm-qwen25` and `vllm-llama32`,
+each requesting `hami.io/gpu-mem` and `hami.io/gpu-core` slices and scheduled by
+`hami-scheduler`. Kong then routes `/v1/chat/completions` by the
+`x-model-target` header. Full details: [hami.md](hami.md).
+
+> The autoscaling overlay targets the base `vllm` deployment, which does not
+exist under the HAMI overlay. Scale the sliced deployments individually or add
+a dedicated `ScaledObject` per slice.
+
+## 6) Terraform split (infra vs in-cluster)
 
 The repo separates:
 

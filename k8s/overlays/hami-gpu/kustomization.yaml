@@ -1,0 +1,99 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# HAMI vGPU slicing overlay.
+#
+# Replaces the single CPU-mode `vllm` deployment from the base with two
+# GPU-sliced vLLM deployments that share one physical GPU through HAMI:
+#
+#   vllm-qwen25   -> hami.io/gpu-mem=6144 MiB, hami.io/gpu-core=40
+#   vllm-llama32  -> hami.io/gpu-mem=4096 MiB, hami.io/gpu-core=30
+#
+# Prerequisites:
+#   ./scripts/install-hami.sh
+#
+# Apply with:
+#   kubectl apply -k k8s/overlays/hami-gpu
+
+namespace: vllm-inference-platform
+
+resources:
+  - ../../base
+  - deployment-vllm-qwen.yaml
+  - deployment-vllm-llama.yaml
+  - service-vllm-qwen.yaml
+  - service-vllm-llama.yaml
+  - prometheus-rbac.yaml
+
+patches:
+  # Remove the base CPU-mode vLLM deployment and its Service; the HAMI
+  # overlay provides two GPU-sliced replacements instead.
+  - target:
+      kind: Deployment
+      name: vllm
+    patch: |-
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: vllm
+  - target:
+      kind: Service
+      name: vllm
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: vllm
+
+  # Prometheus needs a ServiceAccount with pod list/watch permissions for the
+  # HAMI pod-based service discovery job.
+  - target:
+      kind: Deployment
+      name: prometheus
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: prometheus
+      spec:
+        template:
+          spec:
+            serviceAccountName: prometheus
+
+  # The base fallback-mock probes `vllm:8000/health`, which this overlay
+  # deletes. Point it at the default (Qwen) slice instead.
+  - target:
+      kind: Deployment
+      name: fallback-mock
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: fallback-mock
+      spec:
+        template:
+          spec:
+            containers:
+              - name: fallback-mock
+                env:
+                  - name: PRIMARY_HEALTH_URL
+                    value: http://vllm-qwen25:8000/health
+
+configMapGenerator:
+  # Replace the base Kong declarative config with the multi-model,
+  # header-routed variant.
+  - name: kong-config
+    behavior: replace
+    files:
+      - kong.yml=kong.yml
+    options:
+      disableNameSuffixHash: true
+  # Replace the base Prometheus config to add the HAMI vGPU exporter job.
+  - name: prometheus-config
+    behavior: replace
+    files:
+      - prometheus.yml=prometheus.yml
+    options:
+      disableNameSuffixHash: true

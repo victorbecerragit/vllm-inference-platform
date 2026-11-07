@@ -37,13 +37,18 @@ it after layout changes.
 ```bash
 cp .env.example .env
 make up
-curl -s -H "apikey: secret-api-key" http://localhost:8000/v1/models | jq .
+curl -s -H "Authorization: Bearer secret-api-key" http://localhost:8000/v1/models | jq .
 ```
+
+> Local validation note: the default local Kind stack is CPU-only. HAMI can install successfully, but the device plugin will remain unscheduled until a node is labeled `gpu=on` and exposes NVIDIA device resources. In other words, the scheduler can run without a GPU node, but real vGPU slicing cannot be validated locally without one.
+>
+> For end-to-end HAMI testing, use a real GPU-capable node or the Terraform GKE demo in this repo, which now provisions a dedicated HAMI GPU node pool labeled for `hami-scheduler`.
 
 ## Documentation
 
 - Installation and local usage: [docs/installation.md](docs/installation.md)
 - Kubernetes and autoscaling notes: [docs/kubernetes.md](docs/kubernetes.md)
+- HAMI vGPU slicing: [docs/hami.md](docs/hami.md)
 
 ## Kubernetes Failover And Failback (Kong Managed)
 
@@ -69,6 +74,29 @@ Expected result:
 - Fallback phase returns fallback payload.
 - Post-restore phase returns primary vLLM payload.
 - Script exits with `PASS`.
+
+## HAMI vGPU Slicing (Multi-Model On One GPU)
+
+The `k8s/overlays/hami-gpu` overlay replaces the single CPU-mode vLLM deployment
+with two GPU-sliced deployments that share one physical GPU through
+[HAMI](https://github.com/Project-HAMI/HAMI).
+
+> The default local Kind cluster in this repo is not enough to validate HAMI end-to-end because it has no GPU-backed node. The Terraform GKE demo is the supported path for real runtime verification. It provisions a GPU-backed node pool and labels it `gpu=on`, which allows the HAMI device plugin and `hami-scheduler` to bind workloads correctly.
+
+| Deployment | Model | VRAM slice | Compute slice |
+| :--- | :--- | :--- | :--- |
+| `vllm-qwen25` | `Qwen/Qwen2.5-1.5B-Instruct` | 6144 MiB | 40% SM |
+| `vllm-llama32` | `meta-llama/Llama-3.2-1B-Instruct` | 4096 MiB | 30% SM |
+
+```bash
+make hami-install   # helm install HAMI scheduler + device plugin
+make hami-deploy    # kubectl apply -k k8s/overlays/hami-gpu
+make hami-verify    # validate scheduling, allocations, and Kong routing
+```
+
+Kong routes by the `x-model-target` header (`qwen2.5` or `llama3.2`); requests
+without the header default to the Qwen slice. See [docs/hami.md](docs/hami.md)
+for the full guide, metrics, and troubleshooting.
 
 ## Core Components
 

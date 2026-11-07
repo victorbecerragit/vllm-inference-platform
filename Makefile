@@ -1,7 +1,7 @@
-.PHONY: docker-check docker-test docker-build preflight up up-no-preflight down logs kind-create kind-deploy kind-up kind-delete kind-deploy-full autoscaling-deploy
+.PHONY: docker-check docker-test docker-build preflight up up-no-preflight down logs kind-create kind-deploy kind-up kind-delete kind-deploy-full autoscaling-deploy hami-install hami-deploy hami-verify
 
 KIND_CLUSTER_NAME ?= vllm-inference-platform
-KIND_CONFIG ?= k8s/kind-config.yaml
+KIND_CONFIG ?= k8s/cluster-config.yaml
 KIND_KONG_PROXY_PORT ?= 18000
 KIND_KONG_ADMIN_PORT ?= 18001
 KIND_GRADIO_PORT ?= 18080
@@ -71,3 +71,13 @@ kind-up: kind-create kind-deploy
 
 kind-delete:
 	kind delete cluster --name $(KIND_CLUSTER_NAME)
+
+# HAMI vGPU slicing (requires a GPU node with the NVIDIA device plugin).
+hami-install:
+	./scripts/install-hami.sh
+
+hami-deploy:
+	kubectl apply -k k8s/overlays/hami-gpu
+
+hami-verify:
+	./scripts/verify-hami.sh

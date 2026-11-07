@@ -1,0 +1,36 @@
+# Helm values for the HAMI chart (https://project-hami.github.io/HAMI).
+#
+# Consumed by scripts/install-hami.sh so the install is reproducible and
+# reviewable in Git.
+#
+# Resource naming note:
+#   HAMI defaults to nvidia.com/gpumem / nvidia.com/gpucores. This platform
+#   standardises on hami.io/gpu-mem (MiB) and hami.io/gpu-core (percent SM)
+#   so the vGPU slice is unambiguous next to the physical nvidia.com/gpu
+#   resource used by the non-HAMI GPU overlay.
+#
+#   The chart reads these from devices.nvidia.* (there is no top-level
+#   resourceName/resourceCoreName value). The scheduler extender picks them
+#   up automatically for the NVIDIA backend.
+
+devicePlugin:
+  service:
+    # ClusterIP keeps the vGPU monitor metrics internal to the cluster.
+    type: ClusterIP
+  # The chart only schedules the device plugin onto nodes carrying this
+  # label. Label GPU nodes before installing:
+  #   kubectl label node <gpu-node> gpu=on
+  nvidiaNodeSelector:
+    gpu: "on"
+
+scheduler:
+  kubeScheduler:
+    image:
+      tag: v1.30.0
+
+devices:
+  nvidia:
+    # Virtual memory slice resource (MiB).
+    resourceMemoryName: "hami.io/gpu-mem"
+    # Virtual compute slice resource (percent of SM).
+    resourceCoreName: "hami.io/gpu-core"

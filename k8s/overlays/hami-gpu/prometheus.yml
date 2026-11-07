@@ -1,0 +1,76 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  scrape_timeout: 4s
+
+scrape_configs:
+  # --- vLLM vGPU slices (one target per HAMI-sliced deployment) ---
+  - job_name: "vllm-qwen25"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["vllm-qwen25:8000"]
+        labels:
+          service: "vllm-engine"
+          engine: "vllm"
+          mode: "hami-vgpu"
+          model: "qwen2.5"
+
+  - job_name: "vllm-llama32"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["vllm-llama32:8000"]
+        labels:
+          service: "vllm-engine"
+          engine: "vllm"
+          mode: "hami-vgpu"
+          model: "llama3.2"
+
+  - job_name: "kong"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["kong:8001"]
+        labels:
+          service: "kong-ai-gateway"
+          tier: "gateway"
+
+  - job_name: "otel-collector"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["otel-collector:8889"]
+        labels:
+          service: "otel-collector"
+          tier: "observability"
+
+  # --- HAMI vGPU slice metrics ---
+  # Emitted by the HAMI vGPU monitor container in the device plugin DaemonSet
+  # (devicePlugin.monitor.metricsBindAddress defaults to :9394):
+  #   hami_vgpu_memory_used_bytes
+  #   hami_vgpu_memory_limit_bytes
+  #   hami_container_device_utilization_ratio
+  #
+  # Pod-based discovery keeps this working when the device plugin is
+  # rescheduled. Requires the prometheus ServiceAccount + ClusterRole in
+  # prometheus-rbac.yaml.
+  - job_name: "hami-vgpu-exporter"
+    metrics_path: /metrics
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - hami-system
+    relabel_configs:
+      # The HAMI chart labels the device plugin pods with
+      # app.kubernetes.io/component=hami-device-plugin.
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_component]
+        regex: "hami-device-plugin"
+        action: keep
+      # Only scrape the vGPU monitor metrics port.
+      - source_labels: [__meta_kubernetes_pod_container_port_number]
+        regex: "9394"
+        action: keep
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
