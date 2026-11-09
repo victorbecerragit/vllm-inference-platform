@@ -18,11 +18,13 @@ gcloud beta billing projects describe YOUR_GCP_PROJECT_ID
 
 # Terraform infra plan (GKE, VPC, node pool)
 
-terraform -chdir=terraform plan --var-file=terraform.tfvars -lock=false
+cp terraform/gke/terraform.tfvars.example terraform/gke/terraform.tfvars
+
+terraform -chdir=terraform/gke plan --var-file=terraform.tfvars -lock=false
 
 # Terraform infra apply
 
-terraform -chdir=terraform apply --var-file=terraform.tfvars -lock=false
+terraform -chdir=terraform/gke apply --var-file=terraform.tfvars -lock=false
 
 # Terraform in-cluster plan/apply (KEDA + optional ScaledObject)
 
@@ -48,7 +50,7 @@ gcloud container clusters get-credentials vllm-ephemeral-gke --zone GCP_REGION -
 
 kubectl get nodes
 
-kubectl apply -k ../k8s/
+kubectl apply -k ../../k8s/
 
 # Optional fallback only (if terraform/incluster install_scaledobject=false):
-# kubectl apply -k ../k8s/overlays/autoscaling
+# kubectl apply -k ../../k8s/overlays/autoscaling

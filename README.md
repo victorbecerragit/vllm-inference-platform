@@ -30,7 +30,7 @@ it after layout changes.
 | Experience | Gradio chat UI (`:7860`), async benchmark client |
 | Observability | OTel Collector, Jaeger, Prometheus, Grafana |
 | Autoscaling | KEDA (primary, queue depth) + HPA (guardrail) |
-| Infrastructure | GKE node pool / local kind cluster, VPC, Terraform provisioned |
+| Infrastructure | GKE or EKS node pools / local kind cluster, VPC, Terraform provisioned |
 
 ## Quick Start
 
@@ -49,6 +49,39 @@ curl -s -H "Authorization: Bearer secret-api-key" http://localhost:8000/v1/model
 - Installation and local usage: [docs/installation.md](docs/installation.md)
 - Kubernetes and autoscaling notes: [docs/kubernetes.md](docs/kubernetes.md)
 - HAMI vGPU slicing: [docs/hami.md](docs/hami.md)
+
+## Terraform Multi-Cloud IaC
+
+`terraform/` holds three independent root modules, each with its own state, lock
+file, and `terraform.tfvars`:
+
+| Root | Cloud | Provisions |
+| :--- | :--- | :--- |
+| `terraform/gke/` | GCP | VPC, zonal GKE cluster, CPU node pool, HAMI GPU node pool |
+| `terraform/eks/` | AWS | VPC, EKS cluster, CPU node group, L4 (`g6`) Spot GPU node group |
+| `terraform/incluster/` | Any | KEDA and optional `ScaledObject` (uses current kubeconfig) |
+
+```bash
+# GKE
+cp terraform/gke/terraform.tfvars.example terraform/gke/terraform.tfvars
+terraform -chdir=terraform/gke init
+terraform -chdir=terraform/gke apply --var-file=terraform.tfvars
+
+# EKS (GPU node group defaults to desired=0 until Spot quota is approved)
+cp terraform/eks/terraform.tfvars.example terraform/eks/terraform.tfvars
+terraform -chdir=terraform/eks init
+terraform -chdir=terraform/eks apply --var-file=terraform.tfvars
+
+# In-cluster add-ons (after a cluster exists and kubectl is configured)
+cp terraform/incluster/terraform.tfvars.example terraform/incluster/terraform.tfvars
+terraform -chdir=terraform/incluster init
+terraform -chdir=terraform/incluster apply --var-file=terraform.tfvars
+```
+
+Provider-specific prerequisites live next to each root: `terraform/gke/setup.txt`
+(gcloud auth, API enablement) and `terraform/eks/setup.txt` (AWS CLI config, GPU
+Spot quota increase, kubeconfig). See [terraform/README.md](terraform/README.md)
+for the full reference.
 
 ## Kubernetes Failover And Failback (Kong Managed)
 

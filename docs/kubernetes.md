@@ -131,18 +131,28 @@ a dedicated `ScaledObject` per slice.
 
 The repo separates:
 
-- `terraform/`: cluster and infrastructure bootstrap
+- `terraform/gke/`: GKE cluster and infrastructure bootstrap
+- `terraform/eks/`: EKS cluster and infrastructure bootstrap (AWS)
 - `terraform/incluster/`: cluster-side dependencies such as KEDA and optional `ScaledObject`
 
-Typical flow:
+Typical flow (GKE):
 
 ```bash
-terraform -chdir=terraform init
-terraform -chdir=terraform apply --var-file=terraform.tfvars
+cp terraform/gke/terraform.tfvars.example terraform/gke/terraform.tfvars
+terraform -chdir=terraform/gke init
+terraform -chdir=terraform/gke apply --var-file=terraform.tfvars
 
 cp terraform/incluster/terraform.tfvars.example terraform/incluster/terraform.tfvars
 terraform -chdir=terraform/incluster init
 terraform -chdir=terraform/incluster apply --var-file=terraform.tfvars
+```
+
+Typical flow (EKS):
+
+```bash
+cp terraform/eks/terraform.tfvars.example terraform/eks/terraform.tfvars
+terraform -chdir=terraform/eks init
+terraform -chdir=terraform/eks apply --var-file=terraform.tfvars
 ```
 
 The `Makefile` guards against applying the autoscaling overlay if Terraform appears to own the `ScaledObject`. This prevents duplicate ownership of the same scaling resource.

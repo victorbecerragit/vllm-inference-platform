@@ -1,0 +1,22 @@
+aws_region    = "us-west-2"
+cluster_name  = "vllm-ephemeral-eks"
+cluster_version = "1.30"
+
+# Baseline CPU node group
+cpu_node_instance_types = ["m6i.large"]
+cpu_capacity_type       = "ON_DEMAND"
+cpu_node_desired_count  = 1
+cpu_node_min_count      = 1
+cpu_node_max_count      = 4
+
+# HAMI GPU node group (NVIDIA L4 on g6 family)
+# Keep desired_count at 0 until EC2 Spot quota is approved for G/VT families.
+gpu_node_instance_types = ["g6.xlarge"]
+gpu_capacity_type       = "SPOT"
+gpu_node_desired_count  = 0
+gpu_node_min_count      = 0
+gpu_node_max_count      = 1
+
+tags = {
+  Owner = "platform-team"
+}

@@ -5,7 +5,7 @@ KIND_CONFIG ?= k8s/cluster-config.yaml
 KIND_KONG_PROXY_PORT ?= 18000
 KIND_KONG_ADMIN_PORT ?= 18001
 KIND_GRADIO_PORT ?= 18080
-TF_TFVARS_FILE ?= terraform/terraform.tfvars
+TF_TFVARS_FILE ?= terraform/gke/terraform.tfvars
 INCLUSTER_TFVARS_FILE ?= terraform/incluster/terraform.tfvars
 ALLOW_SCALEDOBJECT_OVERLAY ?= 0
 
